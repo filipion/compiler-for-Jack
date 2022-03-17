@@ -64,33 +64,57 @@ def tokenizer(s):
 
 
 class Identifier():
-    def __init__(self, typ, kind):
+    def __init__(self, typ, kind, idx):
         self.kind = kind
         self.typ = typ
+        self.idx = idx
 
     def __repr__(self):
-        return "{}, {}".format(self.typ, self.kind)
+        return "{}, {}, {}".format(self.typ, self.kind, self.idx)
 
 
 class Environment():
     symbols = [{}]
     curr = 0
+    indices = [{'field':0, 'static':0, 'var':0, 'argument':0}]
 
+    
     def __repr__(self):
         return str(self.symbols)
     
+    
     def push(self):
         self.symbols.append({})
+        self.indices.append({'field':0, 'static':0, 'var':0, 'argument':0})
         self.curr += 1
         
     def pop(self):
         self.symbols.pop()
+        self.indices.pop()
         self.curr -= 1
+
         
     def add(self, name, typ, kind):
+        idx = self.indices[self.curr]
         
-        self.symbols[self.curr][name] = Identifier(typ, kind)
-        print(self)
+        
+        self.symbols[self.curr][name] = Identifier(typ, kind, idx[kind])
+        idx[kind] += 1
+        
+    
+    def lookup(self, name):
+        table = self.symbols.copy()
+        def helper(self, name, table):
+            if table == [{}] or len(table) == 0:
+                return None
+            elif name in table[-1].keys():
+                return table[-1][name]
+            else:
+                return helper(self, name, table[:-1])
+        
+        return helper(self, name, table)
+        
+        
 
 
 
@@ -157,7 +181,7 @@ class Parser():
     #done
     def compileParamList(self, words):
         for arg, typ in zip(words[1::3], words[0::3]):
-            self.env.add(arg[1], typ[1], "arg")
+            self.env.add(arg[1], typ[1], "argument")
         return ["parameterList"] + words
     
     
@@ -366,6 +390,13 @@ class Parser():
         
         else:
             raise ValueError("Invalid term {}".format(words))
+            
+    
+    def pushVM(arg1, arg2):
+        return "  push {} {}".format(arg1, arg2)
+    
+    def popVM(arg1, arg2):
+        return "  pop {} {}".format(arg1, arg2)
         
     
     def unit_tests():
@@ -402,6 +433,7 @@ def xmlize(syn_tree, deep=0):
             return "{}<{}>{}</{}>\n".format(d, tag, body, tag)  
         else:
             return "{}<{}>\n{}{}</{}>\n".format(d, tag, body, d, tag)
+    
 
 
 def uncomment(s):
@@ -466,6 +498,7 @@ EX2 = pr.compileClass(tokenizer("""
 class program2{
     field int a;
     static string b;
+    static string dragon;
     
     constructor void program(){}
     method int foo(char a, int b, float c){
@@ -475,6 +508,8 @@ class program2{
 }
 """
 ))
+print("----EX3----EX4----")
+print(pr.env.lookup("nothing"))
 
 EX3 = pr.compileSubDec(tokenizer("""
 method int foo(int a, int b, int c){

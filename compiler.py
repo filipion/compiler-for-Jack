@@ -8,7 +8,9 @@ keyWords = {'class', 'method', 'function', 'constructor', 'int', 'boolean', 'cha
             'void', 'var', 'static', 'field', 'let', 'do', 'if', 'else', 'while',
             'return', 'true', 'false', 'null', 'this'}
 
-keyWordConsts = {'true', 'false', 'null', 'this'}
+keyWordConsts = {'true':-1, 'false':0, 'null':0, 'this':0}
+kindToSegment = {'var':'local', 'argument':'argument', 'field':'this', 'static':'static'}
+opToVM = {'+':'add', '-':'sub', '|':'or', '&':'and', '<':'lt', '>':'gt', '=':'eq'}
 
 # Splits the input string into a list of words. We have to reimplement
 # string.split here in order to tokenize strings like '2+3'
@@ -122,6 +124,7 @@ class Environment():
 class Parser():
     
     env = Environment()
+    code = ""
     
         
     def nextblock(words, isblock):
@@ -154,7 +157,6 @@ class Parser():
             return (x in {'constructor', 'function', 'method'})
         
         ans = ans + classBody(words[3:-1]) + [words[-1]]
-        print(self.env)
         
         return ans
     
@@ -190,25 +192,25 @@ class Parser():
         
         def innerBody(words):
             if ['keyword', 'var'] in words:
-                self.env.add(words[2][1], words[1][1], words[0][1])
                 i = words.index(['symbol', ';'])
                 ans = []
-                ans += [Parser.compileVarDec(words[:i+1])]
+                ans += [Parser.compileVarDec(self, words[:i+1])]
                 ans += innerBody(words[i+1:])
                 return ans
             else:
-                return [Parser.compileStatements(words)]
+                return [Parser.compileStatements(self, words)]
         
         return ['subroutineBody', words[0]] + innerBody(words[1:-1]) + [words[-1]]
     
     
     #done
-    def compileVarDec(words):
+    def compileVarDec(self, words):
+        self.env.add(words[2][1], words[1][1], words[0][1])
         return ["varDec"] + words
     
     
     #done
-    def compileStatements(words):
+    def compileStatements(self, words):#TODO
         ans = ["statements"]
         
         def innerStats(words):
@@ -216,57 +218,57 @@ class Parser():
                 return []
             else:
                 i = Parser.firstStat(words)
-                return [Parser.compileStat(words[:i+1])] + innerStats(words[i+1:])
+                return [Parser.compileStat(self, words[:i+1])] + innerStats(words[i+1:])
         
         return ans + innerStats(words)
         
     
     # parse a single generic statement
-    def compileStat(words):
+    def compileStat(self, words): #TODO
         
         if words[0][1] == 'return':
             if len(words) > 2:
                 return ['returnStatement'] + [words[0]] + \
-                        [Parser.compileExpr(words[1:-1])] + [words[-1]]
+                        [Parser.compileExpr(self, words[1:-1])] + [words[-1]]
             else: 
                 return ['returnStatement'] + words
                    
         elif words[0][1] == 'let':
             if words[2] == ['symbol', '=']:
-                return ['letStatement'] + words[0:3] + \
-                    [Parser.compileExpr(words[3:-1])] + [words[-1]]
+                Parser.popVM(self, words[1][1])
+                return ['letStatement'] + words[0:3] + [Parser.compileExpr(self, words[3:-1])] + [words[-1]]
             elif words[2] == ['symbol', '['] and \
                  words[4] == ['symbol', ']']:
                 return ['letStatement'] + words[0:3] + \
-                    [Parser.compileExpr([words[3]])] + words[4:6] + \
-                    [Parser.compileExpr(words[6:-1])] + [words[-1]]
+                    [Parser.compileExpr(self, [words[3]])] + words[4:6] + \
+                    [Parser.compileExpr(self, words[6:-1])] + [words[-1]]
             else:
                 raise ValueError("Unusual let expression")
         
         elif words[0][1] == 'while':
             idx = words.index(['symbol', '{'])
             return ['whileStatement'] + words[0:2] + \
-                [Parser.compileExpr(words[2:idx-1])] + \
-                words[idx-1:idx+1] + [Parser.compileStatements(words[idx+1:-1])] + \
+                [Parser.compileExpr(self, words[2:idx-1])] + \
+                words[idx-1:idx+1] + [Parser.compileStatements(self, words[idx+1:-1])] + \
                 [words[-1]]
         
         elif words[0][1] == 'if':
             idx = words.index(['symbol', '{'])
             ridx = Parser.accolade(words, idx)
             ans = ['ifStatement'] + words[0:2] + \
-                [Parser.compileExpr(words[2:idx-1])] + \
-                words[idx-1:idx+1] + [Parser.compileStatements(words[idx+1:ridx])] + \
+                [Parser.compileExpr(self, words[2:idx-1])] + \
+                words[idx-1:idx+1] + [Parser.compileStatements(self, words[idx+1:ridx])] + \
                 [words[ridx]]
             if ridx == len(words) - 1:
                 return ans
             else:
                 return ans + words[ridx+1: ridx+3] +\
-                    [Parser.compileStatements(words[ridx+3:-1])] +\
+                    [Parser.compileStatements(self, words[ridx+3:-1])] +\
                     [["symbol", "}"]]
         
         elif words[0][1] == 'do':
             return ['doStatement'] + [words[0]] + \
-                    Parser.compileTerm(words[1:-1])[1:] + [words[-1]]
+                    Parser.compileTerm(self, words[1:-1])[1:] + [words[-1]]
                  
         else:
             return ['Xstatement'] + words
@@ -308,95 +310,109 @@ class Parser():
                 return ridx
             
     
-    def compileExpr(words):
+    def compileExpr(self, words):
         
         def helper(words):
-            opptr, first_term = Parser.findTermEnd(words)
+            opptr, first_term = Parser.findTermEnd(self, words)
             opptr += 1
             if opptr < len(words):
-                return [first_term] + [words[opptr]] + helper(words[opptr+1:])
+                return str(first_term) + helper(words[opptr+1:]) + "  " + opToVM[words[opptr][1]] + "\n"
             else:
-                return [first_term]
+                return first_term
             
-        return ['expression'] + helper(words)
+        return ['expression'] + [helper(words)]
     
     
     #last function
-    def compileExprList(words):
+    def compileExprList(self, words):
         def helper(words):
             if words == []:
-                return []
+                return '', 0
             
             elif ['symbol', ','] not in words:
-                return [Parser.compileExpr(words)]
+                return Parser.compileExpr(self, words)[1], 1
             
             else:
                 i = words.index(['symbol', ','])
-                return [Parser.compileExpr(words[:i])] + [words[i]] + helper(words[i+1:])            
-        return ['expressionList'] + helper(words)
+                return Parser.compileExpr(self, words[:i])[1] + helper(words[i+1:])[0], 1 + helper(words[i+1:])[1]            
+        
+        return helper(words)[0], helper(words)[1]
     
     
     # use findTermEnd instead
-    def compileTerm(words):
-        return Parser.findTermEnd(words)[1]
+    def compileTerm(self, words):
+        return str(Parser.findTermEnd(self, words)[1])
     
     
     # takes an input starting with a term and delimits that term
-    def findTermEnd(words):
+    def findTermEnd(self, words):
         ans = ['term']
         # edge case when we have a single token
         if len(words) == 1:
-                return 0, ans + [words[0]]
+                return 0, Parser.pushVM(self, words[0])
         
         #identifier(variable), function/method call, [] operator
-        if words[0][0] == 'identifier':
+        if words[0][0] == 'identifier' and len(words) > 1:
             if words[1][1] == '(':
-                ans += words[0:2] 
                 lidx = Parser.accolade(words, 1, '(', ')')
-                ans += [Parser.compileExprList(words[2:lidx])]
-                ans += [words[lidx]]
-                return lidx, ans
+                [args, n_args] = Parser.compileExprList(self, words[2:lidx])
+                return lidx, args + "  call CLS.{} {}\n".format(words[0][1], n_args)
             elif words[1][1] == '.':
-                ans += words[0:4] 
                 lidx = Parser.accolade(words, 3, '(', ')')
-                ans += [Parser.compileExprList(words[4:lidx])]
-                ans += [words[lidx]]
-                return lidx, ans
-            elif words[1][1] == '[':
+                [args, n_args] = Parser.compileExprList(self, words[4:lidx])
+                return lidx, args + "  call {}.{} {}\n".format(words[0][1], words[2][1], n_args)
+            elif words[1][1] == '[': #TODO
                 ans += words[0:2]
                 lidx = Parser.accolade(words, 1, '[', ']')
-                ans += [Parser.compileExpr(words[2:lidx])]
+                ans += [Parser.compileExpr(self, words[2:lidx])]
                 ans += [words[lidx]]
                 return Parser.accolade(words, 1, '[', ']'), ans
             else:
-                return 0, ans + [words[0]]
+                return Parser.findTermEnd(self, [words[0]])
             
         elif words[0][1] == "(":
-            ans += words[0:1]
             lidx = Parser.accolade(words, 0, '(', ')')
-            ans += [Parser.compileExpr(words[1:lidx])]
-            ans += [words[lidx]]
-            return Parser.accolade(words, 0, '(', ')'), ans
+            return Parser.accolade(words, 0, '(', ')'), Parser.compileExpr(self, words[1:lidx])[1]
         
         elif words[0][1] in "-~":
             next_words = words[1:].copy()
-            next_end, next_compiled = Parser.findTermEnd(next_words)
+            next_end, next_compiled = Parser.findTermEnd(self, next_words)
             
-            return (next_end + 1), ans + [words[0]] + [next_compiled]
+            return (next_end + 1), next_compiled + "  neg\n"
                 
         elif words[0][0] in {'integerConstant', 'stringConstant'} or \
             words[0][1] in keyWordConsts:
-            return 0, ans + [words[0]]
+            return 0, Parser.pushVM(self, words[0])
         
         else:
             raise ValueError("Invalid term {}".format(words))
             
     
-    def pushVM(arg1, arg2):
-        return "  push {} {}".format(arg1, arg2)
+    def pushVM(self, token):
+        [typ, name] = token
+        data = self.env.lookup(name)
+        if data:
+            arg1, arg2 = kindToSegment[data.kind], data.idx
+        else:
+            if typ == 'integerConstant':
+                arg1, arg2 = 'const', name
+            elif typ == 'keyword' and name in keyWordConsts.keys():
+                arg1, arg2 = 'const', keyWordConsts[name]
+            else:
+                raise ValueError("{} not defined".format(name))
+
+        line = "  push {} {}\n".format(arg1, arg2)
+        return line
     
-    def popVM(arg1, arg2):
-        return "  pop {} {}".format(arg1, arg2)
+    
+    def popVM(self, name):
+        data = self.env.lookup(name)
+        if data:
+            arg1, arg2 = kindToSegment[data.kind], data.idx
+        else:
+            raise ValueError("{} not defined".format(name))
+        line = "  pop {} {}\n".format(arg1, arg2)
+        return line
         
     
     def unit_tests():
@@ -472,59 +488,77 @@ def create_test_xml(location):
         
 pr = Parser()
     
-EX1 = pr.compileClass(tokenizer("""
-class program{
-    method void do_stuff (){
-        var int counter = 0;
+# EX1 = pr.compileClass(tokenizer("""
+# class program{
+#     method void do_stuff (int lmao){
+#         var int counter = 0;
+#         var int a;
+#         var int b;
+#         var int q;
+#         var bool expr;
         
-        while (a > 0){
-            let b = b + 1;
-            let q = \" asdad adasga dfdf while (a > 0) \" - 2;
-            do a();
-        }
+#         while (a > 0){
+#             let b = b + 1;
+#             let q = 44 - 2;
+#             do a();
+#         }
         
-        if (expr) 
-            {do nothing();}
-        else
-            {do something(one, two);}
+#         if (expr) 
+#             {do nothing();}
+#         else
+#             {do something(a, b);}
 
+#     }
+# }
+# """
+# ))
+
+
+# EX2 = pr.compileClass(tokenizer("""
+# class program2{
+#     field int a;
+#     static string b;
+#     static string dragon;
+    
+#     constructor void program(){}
+#     method int foo(char a, int b, float c){
+#         var int counter = 0;    
+        
+#     }  
+# }
+# """
+# ))
+# print("----EX3----EX4----")
+# print(pr.env.lookup("nothing"))
+
+# EX3 = pr.compileSubDec(tokenizer("""
+# method int foo(int a, int b, int c){
+#     return 0;
+# }  
+# """
+# ))
+
+# EX4 = pr.compileStat(tokenizer("""
+# if(true){
+#     return v[10];
+# }
+# else{
+     
+# }  
+# """
+# ))
+
+
+
+pr2 = Parser()
+EX5 = pr2.compileClass(tokenizer("""
+class init{
+    function int main(int is_epic){
+        var int a;
+        var int b;
+        let a = f(a, b, 3, 4);
+        let a = ddd.f(b) + (- a);
     }
 }
 """
 ))
-
-
-EX2 = pr.compileClass(tokenizer("""
-class program2{
-    field int a;
-    static string b;
-    static string dragon;
-    
-    constructor void program(){}
-    method int foo(char a, int b, float c){
-        var int counter = 0;    
-        
-    }  
-}
-"""
-))
-print("----EX3----EX4----")
-print(pr.env.lookup("nothing"))
-
-EX3 = pr.compileSubDec(tokenizer("""
-method int foo(int a, int b, int c){
-    return 0;
-}  
-"""
-))
-
-EX4 = Parser.compileStat(tokenizer("""
-if(s){
-    return v[10];
-}
-else{
-     
-}  
-"""
-))
-

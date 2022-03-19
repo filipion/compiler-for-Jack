@@ -115,6 +115,10 @@ class Environment():
                 return helper(self, name, table[:-1])
         
         return helper(self, name, table)
+    
+    def get_local_count(self):
+        idx = self.indices[self.curr]
+        return idx['var']
         
         
 
@@ -125,6 +129,8 @@ class Parser():
     
     env = Environment()
     code = ""
+    curr_code = ""
+    cls_name = "null"
     
         
     def nextblock(words, isblock):
@@ -140,7 +146,7 @@ class Parser():
     #done. the recursive nextmethod function is inefficient (maybe)
     def compileClass(self, words):
         ans = ['class', words[0], words[1], words[2]]
-    
+        self.cls_name = words[1][1]
         def classBody(words):
             if len(words) == 0:
                 return []
@@ -176,7 +182,13 @@ class Parser():
         ans += [Parser.compileParamList(self, words[4:i])]
         ans += [['symbol', ')']]
         ans += [Parser.compileSubBody(self, words[i+1:])]
+        
+        num_var = self.env.get_local_count()
         self.env.pop()
+        
+        self.code += "function {}.{} {}\n".format(self.cls_name, words[2][1], num_var)
+        self.code += self.curr_code
+        self.curr_code = ""
         return  ans
     
     
@@ -210,35 +222,33 @@ class Parser():
     
     
     #done
-    def compileStatements(self, words):#TODO
+    def compileStatements(self, words):
         ans = ["statements"]
         
         def innerStats(words):
             if len(words) == 0:
-                return []
+                return ""
             else:
                 i = Parser.firstStat(words)
-                return [Parser.compileStat(self, words[:i+1])] + innerStats(words[i+1:])
+                return str(Parser.compileStat(self, words[:i+1])[1]) + innerStats(words[i+1:])
         
-        return ans + innerStats(words)
+        self.curr_code = innerStats(words)
+        return ans + [self.curr_code]
         
     
     # parse a single generic statement
-    def compileStat(self, words): #TODO
+    def compileStat(self, words): #TODO while, if and array
         
         if words[0][1] == 'return':
             if len(words) > 2:
-                return ['returnStatement'] + [words[0]] + \
-                        [Parser.compileExpr(self, words[1:-1])] + [words[-1]]
-            else: 
-                return ['returnStatement'] + words
+                return ['returnStatement'] + ["  return\n" + Parser.compileExpr(self, words[1:-1])]
+            else:
+                return ['returnStatement'] + ["  return\n"]
                    
         elif words[0][1] == 'let':
             if words[2] == ['symbol', '=']:
-                Parser.popVM(self, words[1][1])
-                return ['letStatement'] + words[0:3] + [Parser.compileExpr(self, words[3:-1])] + [words[-1]]
-            elif words[2] == ['symbol', '['] and \
-                 words[4] == ['symbol', ']']:
+                return ['letStatement'] + [Parser.compileExpr(self, words[3:-1]) + Parser.popVM(self, words[1][1])]
+            elif words[2] == ['symbol', '['] and words[4] == ['symbol', ']']:
                 return ['letStatement'] + words[0:3] + \
                     [Parser.compileExpr(self, [words[3]])] + words[4:6] + \
                     [Parser.compileExpr(self, words[6:-1])] + [words[-1]]
@@ -267,11 +277,10 @@ class Parser():
                     [["symbol", "}"]]
         
         elif words[0][1] == 'do':
-            return ['doStatement'] + [words[0]] + \
-                    Parser.compileTerm(self, words[1:-1])[1:] + [words[-1]]
+            return ['doStatement'] + [Parser.compileTerm(self, words[1:-1])[1:]]
                  
         else:
-            return ['Xstatement'] + words
+            raise ValueError("invalid statement " + str(words))
     
     
     # receives list of tokens enclosed by {}. checks if the endpoints are linked
@@ -320,7 +329,7 @@ class Parser():
             else:
                 return first_term
             
-        return ['expression'] + [helper(words)]
+        return helper(words)
     
     
     #last function
@@ -330,11 +339,11 @@ class Parser():
                 return '', 0
             
             elif ['symbol', ','] not in words:
-                return Parser.compileExpr(self, words)[1], 1
+                return Parser.compileExpr(self, words), 1
             
             else:
                 i = words.index(['symbol', ','])
-                return Parser.compileExpr(self, words[:i])[1] + helper(words[i+1:])[0], 1 + helper(words[i+1:])[1]            
+                return Parser.compileExpr(self, words[:i]) + helper(words[i+1:])[0], 1 + helper(words[i+1:])[1]         
         
         return helper(words)[0], helper(words)[1]
     
@@ -356,7 +365,7 @@ class Parser():
             if words[1][1] == '(':
                 lidx = Parser.accolade(words, 1, '(', ')')
                 [args, n_args] = Parser.compileExprList(self, words[2:lidx])
-                return lidx, args + "  call CLS.{} {}\n".format(words[0][1], n_args)
+                return lidx, args + "  call {}.{} {}\n".format(self.cls_name, words[0][1], n_args)
             elif words[1][1] == '.':
                 lidx = Parser.accolade(words, 3, '(', ')')
                 [args, n_args] = Parser.compileExprList(self, words[4:lidx])
@@ -372,7 +381,7 @@ class Parser():
             
         elif words[0][1] == "(":
             lidx = Parser.accolade(words, 0, '(', ')')
-            return Parser.accolade(words, 0, '(', ')'), Parser.compileExpr(self, words[1:lidx])[1]
+            return Parser.accolade(words, 0, '(', ')'), Parser.compileExpr(self, words[1:lidx])
         
         elif words[0][1] in "-~":
             next_words = words[1:].copy()
@@ -488,30 +497,30 @@ def create_test_xml(location):
         
 pr = Parser()
     
-# EX1 = pr.compileClass(tokenizer("""
-# class program{
-#     method void do_stuff (int lmao){
-#         var int counter = 0;
-#         var int a;
-#         var int b;
-#         var int q;
-#         var bool expr;
+EX1 = pr.compileClass(tokenizer("""
+class program{
+    method void do_stuff (int lmao){
+        var int counter = 0;
+        var int a;
+        var int b;
+        var int q;
+        var bool expr;
         
-#         while (a > 0){
-#             let b = b + 1;
-#             let q = 44 - 2;
-#             do a();
-#         }
+        while (a > 0){
+            let b = b + 1;
+            let q = 44 - 2;
+            do a();
+        }
         
-#         if (expr) 
-#             {do nothing();}
-#         else
-#             {do something(a, b);}
+        if (expr) 
+            {do nothing();}
+        else
+            {do something(a, b);}
 
-#     }
-# }
-# """
-# ))
+    }
+}
+"""
+))
 
 
 # EX2 = pr.compileClass(tokenizer("""

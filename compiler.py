@@ -2,7 +2,7 @@
 """
 Created on Sun Mar  6 14:27:43 2022
 
-@author: user
+@author: filip
 """
 keyWords = {'class', 'method', 'function', 'constructor', 'int', 'boolean', 'char',
             'void', 'var', 'static', 'field', 'let', 'do', 'if', 'else', 'while',
@@ -10,10 +10,12 @@ keyWords = {'class', 'method', 'function', 'constructor', 'int', 'boolean', 'cha
 
 keyWordConsts = {'true':-1, 'false':0, 'null':0, 'this':0}
 kindToSegment = {'var':'local', 'argument':'argument', 'field':'this', 'static':'static'}
-opToVM = {'+':'add', '-':'sub', '|':'or', '&':'and', '<':'lt', '>':'gt', '=':'eq'}
+opToVM = {'+':'add', '-':'sub', '|':'or', '&':'and', '<':'lt', '>':'gt', '=':'eq', '*':'call Math.multiply 2'}
 
-# Splits the input string into a list of words. We have to reimplement
-# string.split here in order to tokenize strings like '2+3'
+### 1 Tokenizer
+
+# Part of the tokenizer. Splits a Jack program string into
+# a list of tokens
 def word_split(s):
     s = s + " "
     words = []
@@ -45,7 +47,8 @@ def word_split(s):
     return words
 
 
-# tokenize for the Jack toy language. This just names the separated tokens
+# tokenize for the Jack toy language. Duck typing the separated tokens
+# that may occur in Jack
 def tokenizer(s):
     
     def tokenize(word):
@@ -65,66 +68,87 @@ def tokenizer(s):
     return [tokenize(w) for w in word_split(s)]
 
 
-class Identifier():
+# takes in a Jack program and returns the same program with comments removed
+# TODO make 'comment' an enum?
+def uncomment(s):
+    ans = ""
+    comment = 0
+    
+    for c, nex in zip(s, s[1:]):
+        if comment == 0:
+            if c == '/' and nex == '/':
+                comment = 1
+            elif c == '/' and nex == '*':
+                comment = 2
+            else:
+                ans += c
+        elif comment == 1 and c == '\n':
+            comment = 0
+        elif comment == 2 and c == '*' and nex == '/':
+            comment = 3
+        elif comment == 3:
+            comment = 0
+            
+    return(ans)
+
+
+### 2 Environment symbol tables
+
+# The entries in our compiler's symbol table
+class VarBinding():
     def __init__(self, typ, kind, idx):
-        self.kind = kind
+        self.kind = kind #field, static, var (normal local variable) or argument
         self.typ = typ
         self.idx = idx
 
     def __repr__(self):
-        return "{}, {}, {}".format(self.typ, self.kind, self.idx)
+        return "{} variable of type {} bound at index {}".format(self.kind, self.typ, self.idx)
 
 
+# List of hash tables to maintain the environment of a program
 class Environment():
-    symbols = [{}]
-    curr = 0
-    indices = [{'field':0, 'static':0, 'var':0, 'argument':0}]
-
+    symbols = [{}] #list of frames
+    curr = 0 #maintain a pointer to the current frame of the env
+    varcount_list = [{'field':0, 'static':0, 'var':0, 'argument':0}] #we keep a frequency vector of each variable kind. one per frame
     
     def __repr__(self):
         return str(self.symbols)
     
-    
     def push(self):
+        # creates a new frame. must be called when a new scope is created by the program
         self.symbols.append({})
-        self.indices.append({'field':0, 'static':0, 'var':0, 'argument':0})
+        self.varcount_list.append({'field':0, 'static':0, 'var':0, 'argument':0})
         self.curr += 1
         
     def pop(self):
         self.symbols.pop()
-        self.indices.pop()
+        self.varcount_list.pop()
         self.curr -= 1
-
         
-    def add(self, name, typ, kind):
-        idx = self.indices[self.curr]
-        
-        
-        self.symbols[self.curr][name] = Identifier(typ, kind, idx[kind])
-        idx[kind] += 1
-        
+    def add(self, variable_name, typ, kind):
+        # adds a VarBinding to the current frame
+        counts = self.varcount_list[self.curr]
+        self.symbols[self.curr][variable_name] = VarBinding(typ, kind, counts[kind])
+        counts[kind] += 1
     
     def lookup(self, name):
-        table = self.symbols.copy()
-        def helper(self, name, table):
-            if table == [{}] or len(table) == 0:
+        # finds the most recent frame that contains a binding for an input variable name
+        table = self.symbols
+        where = -1
+        for where in range(-1, -len(table) - 1, -1):
+            if len(table[:where]) == 0:
                 return None
-            elif name in table[-1].keys():
-                return table[-1][name]
-            else:
-                return helper(self, name, table[:-1])
-        
-        return helper(self, name, table)
+            elif name in table[where].keys():
+                return table[where][name]
     
     def get_local_count(self):
-        idx = self.indices[self.curr]
+        idx = self.varcount_list[self.curr]
         return idx['var']
-        
-        
 
 
-
-
+### 3 Compiler
+# class to compile the Jack language
+# I want to completely refactor this to make it single pass (using indirect recursion)
 class Parser():
     
     env = Environment()
@@ -177,6 +201,8 @@ class Parser():
     def compileSubDec(self, words):
         i = words.index(['symbol', ')'])
         self.env.push()
+        if words[0] == ['keyword', 'method']:
+            self.env.add("this", "_", "argument")
         
         ans = ['subroutineDec'] + words[0:4]
         ans += [Parser.compileParamList(self, words[4:i])]
@@ -185,6 +211,8 @@ class Parser():
         
         num_var = self.env.get_local_count()
         self.env.pop()
+        
+        
         
         self.code += "function {}.{} {}\n".format(self.cls_name, words[2][1], num_var)
         self.code += self.curr_code
@@ -229,8 +257,11 @@ class Parser():
             if len(words) == 0:
                 return ""
             else:
+                
                 i = Parser.firstStat(words)
-                return str(Parser.compileStat(self, words[:i+1])[1]) + innerStats(words[i+1:])
+                print("====\n{}".format(words[:i+1]))
+                return Parser.compileStat(self, words[:i+1])[1] + innerStats(words[i+1:])
+        
         
         self.curr_code = innerStats(words)
         return ans + [self.curr_code]
@@ -277,7 +308,8 @@ class Parser():
                     [["symbol", "}"]]
         
         elif words[0][1] == 'do':
-            return ['doStatement'] + [Parser.compileTerm(self, words[1:-1])[1:]]
+            print("====\n{}".format(Parser.compileTerm(self, words[1:-1])))
+            return ['doStatement'] + [Parser.compileTerm(self, words[1:-1])]
                  
         else:
             raise ValueError("invalid statement " + str(words))
@@ -398,19 +430,21 @@ class Parser():
             
     
     def pushVM(self, token):
+        
         [typ, name] = token
         data = self.env.lookup(name)
         if data:
             arg1, arg2 = kindToSegment[data.kind], data.idx
         else:
             if typ == 'integerConstant':
-                arg1, arg2 = 'const', name
+                arg1, arg2 = 'constant', name
             elif typ == 'keyword' and name in keyWordConsts.keys():
-                arg1, arg2 = 'const', keyWordConsts[name]
+                arg1, arg2 = 'constant', keyWordConsts[name]
             else:
                 raise ValueError("{} not defined".format(name))
 
         line = "  push {} {}\n".format(arg1, arg2)
+        
         return line
     
     
@@ -432,95 +466,33 @@ class Parser():
         
 
 Parser.unit_tests()
-
-
-def xmlize(syn_tree, deep=0):
-    if type(syn_tree) is str:
-        ans = ""
-        if syn_tree == "<":
-            ans = "&lt;"
-        elif syn_tree == ">":
-            ans = "&gt;"
-        elif syn_tree == "&":
-            ans = "&amp;"
-        elif syn_tree == "\"":
-            ans = "&quot;"
-        elif syn_tree[0] == "\"":
-            ans = syn_tree[1:-1]
-        else:
-            ans = syn_tree
-        return " " + ans + " "
-    else:
-        tag = syn_tree[0]
-        body = "".join([xmlize(x, deep+1) for x in syn_tree[1:]])
-        d = "  " * deep
-        if len(syn_tree) == 2 and type(syn_tree[1]) is str:
-            return "{}<{}>{}</{}>\n".format(d, tag, body, tag)  
-        else:
-            return "{}<{}>\n{}{}</{}>\n".format(d, tag, body, d, tag)
+        
+# pr = Parser()
     
-
-
-def uncomment(s):
-    ans = ""
-    comment = 0
-    
-    for c, nex in zip(s, s[1:]):
-        if comment == 0:
-            if c == '/' and nex == '/':
-                comment = 1
-            elif c == '/' and nex == '*':
-                comment = 2
-            else:
-                ans += c
-        elif comment == 1 and c == '\n':
-            comment = 0
-        elif comment == 2 and c == '*' and nex == '/':
-            comment = 3
-        elif comment == 3:
-            comment = 0
-            
-    return(ans)
-
-
-def create_test_xml(location):
-    fname = "Square\\Square"
-    infile = location + fname + ".jack"
-    with open(infile) as f:
-        code = f.read()
-        code = uncomment(code)
-        tokens = tokenizer(code)
-        xml = xmlize(Parser.compileClass(tokens))
+# EX1 = pr.compileClass(tokenizer("""
+# class program{
+#     method void do_stuff (int lmao){
+#         var int counter = 0;
+#         var int a;
+#         var int b;
+#         var int q;
+#         var bool expr;
         
-    with open(location + fname + "ANS.xml", "w") as fout:
-        fout.write(xml)
+#         while (a > 0){
+#             let b = b + 1;
+#             let q = 44 - 2;
+#             do a();
+#         }
         
-pr = Parser()
-    
-EX1 = pr.compileClass(tokenizer("""
-class program{
-    method void do_stuff (int lmao){
-        var int counter = 0;
-        var int a;
-        var int b;
-        var int q;
-        var bool expr;
-        
-        while (a > 0){
-            let b = b + 1;
-            let q = 44 - 2;
-            do a();
-        }
-        
-        if (expr) 
-            {do nothing();}
-        else
-            {do something(a, b);}
+#         if (expr) 
+#             {do nothing();}
+#         else
+#             {do something(a, b);}
 
-    }
-}
-"""
-))
+#     }
+# }
+# """
+# ))
 
 
 # EX2 = pr.compileClass(tokenizer("""
@@ -557,10 +529,7 @@ class program{
 # """
 # ))
 
-
-
-pr2 = Parser()
-EX5 = pr2.compileClass(tokenizer("""
+code = """
 class init{
     function int main(int is_epic){
         var int a;
@@ -570,4 +539,19 @@ class init{
     }
 }
 """
-))
+
+code2 = """
+class Main {
+
+   method void main(int x) {
+      do Output.printInt(1 + (2 * 3));
+      return this;
+   }
+
+}
+"""
+
+pr2 = Parser()
+EX5 = pr2.compileClass(tokenizer(uncomment(code)))
+print(pr2.code)
+    

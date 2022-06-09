@@ -4,13 +4,14 @@ Created on Sun Mar  6 14:27:43 2022
 
 @author: filip
 """
+
 keyWords = {'class', 'method', 'function', 'constructor', 'int', 'boolean', 'char',
             'void', 'var', 'static', 'field', 'let', 'do', 'if', 'else', 'while',
             'return', 'true', 'false', 'null', 'this'}
 
 keyWordConsts = {'true':-1, 'false':0, 'null':0, 'this':0}
 kindToSegment = {'var':'local', 'argument':'argument', 'field':'this', 'static':'static'}
-opToVM = {'+':'add', '-':'sub', '|':'or', '&':'and', '<':'lt', '>':'gt', '=':'eq', '*':'call Math.multiply 2'}
+opToVM = {'+':'add', '-':'sub', '|':'or', '&':'and', '<':'lt', '>':'gt', '=':'eq', '*':'call Math.multiply 2', '/':'call Math.divide 2'}
 
 OPS = "+-*/&|<>="
 UNARY_OPS = "-~"
@@ -109,9 +110,11 @@ class VarBinding():
 
 # List of hash tables to maintain the environment of a program
 class Environment():
-    symbols = [{}] #list of frames
-    curr = 0 #maintain a pointer to the current frame of the env
-    varcount_list = [{'field':0, 'static':0, 'var':0, 'argument':0}] #we keep a frequency vector of each variable kind. one per frame
+    
+    def __init__(self):
+        self.symbols = [{}] #list of frames
+        self.curr = 0 #maintain a pointer to the current frame of the env
+        self.varcount_list = [{'field':0, 'static':0, 'var':0, 'argument':0}] #we keep a frequency vector of each variable kind. one per frame
     
     def __repr__(self):
         return str(self.symbols)
@@ -152,17 +155,19 @@ class Environment():
 # class to compile the Jack language
 class Compiler():
     
-    env = Environment()
-    cls_name = "_"
-    cursor = 0  #a cursor to where the next code block to be compiled starts, most methods will advance this cursor as they compile the code
-    tokens = [] #tokens to compile
-    label_id = 0
+    def __init__(self):
+        self.env = Environment()
+        self.cls_name = "_"
+        self.cls_size = 0
+        self.cursor = 0  #a cursor to where the next code block to be compiled starts, most methods will advance this cursor as they compile the code
+        self.tokens = [] #tokens to compile
+        self.label_id = 0
     
 
     # used by almost every function in the compiler to read the current token
     def get_token(self):
         return self.tokens[self.cursor].copy()
-    
+      
 
     def compileClass(self, input_tokens):
         self.tokens = input_tokens
@@ -179,19 +184,24 @@ class Compiler():
             
     
     def compileClassVarDec(self):
+        if(self.get_token()[1] == 'field'):
+            self.cls_size += 1
+            
         self.env.add(self.tokens[2 + self.cursor][1], self.tokens[1 + self.cursor][1], self.tokens[self.cursor][1])
         self.cursor += 4
     
     
     def compileSubDec(self):
         self.env.push() # we require a new stack frame for local names
-        if self.tokens[self.cursor] == ['keyword', 'method']:
+        fn_kind = self.tokens[self.cursor][1]
+        fn_type = self.tokens[self.cursor + 1][1]
+        fn_name = self.tokens[self.cursor + 2][1]
+        if fn_kind == 'method':
             self.env.add("this", self.cls_name, "argument")
         
         # function header
         self.cursor += 1 #skip (method|function|constructor)
         self.cursor += 1 #skip return type
-        fn_name = self.get_token()[1]
         self.cursor += 1 #skip fn name
         self.cursor += 1 #skip '('
         self.compileParamList()
@@ -203,7 +213,17 @@ class Compiler():
         self.env.pop()
         
         # VM code
-        ans = "function {}.{} {}\n".format(self.cls_name, fn_name, num_var)
+        ans = ""
+        ans += "function {}.{} {}\n".format(self.cls_name, fn_name, num_var)
+        if(fn_kind == 'constructor'): # constructors call a special Memory.alloc function under the hood
+            body = "  push constant {}\n".format(self.cls_size) \
+                 + "  call Memory.alloc 1\n" \
+                 + "  pop pointer 0\n" \
+                 + body
+        elif(fn_kind == 'method'):
+            body = "  push argument 0\n"\
+                 + "  pop pointer 0\n"\
+                 + body
         ans += body
         return  ans
     
@@ -250,12 +270,13 @@ class Compiler():
         
         if current[1] == 'return':
             if self.get_token()[1] == ';':
+                returned = "  push constant 0\n"
                 self.cursor += 1
-                return "  return\n"
+                return returned + "  return\n"
             else:
-                returnand = self.compileExpr()
+                returned = self.compileExpr()
                 self.cursor += 1 # skip ';'
-                return returnand + "  return\n"
+                return returned + "  return\n"
                   
         elif current[1] == 'let':
             to_variable = self.get_token()
@@ -328,6 +349,7 @@ class Compiler():
         elif current[1] == 'do':
             ans = self.compileTerm()
             self.cursor += 1
+            ans += "  pop temp 0\n"
             return ans
                  
         else:
@@ -370,14 +392,30 @@ class Compiler():
                 args, n_args = self.compileExprList()
                 self.cursor += 1
                 return args + "  call {}.{} {}\n".format(self.cls_name, current[1], n_args)
-            elif self.get_token()[1] == '.':
+            
+            elif self.get_token()[1] == '.': # method-like call
                 self.cursor += 1
                 method_name = self.get_token()[1]
                 self.cursor += 2
                 args, n_args = self.compileExprList()
                 self.cursor += 1
-                return args + "  call {}.{} {}\n".format(current[1], method_name, n_args)
-            elif self.get_token()[1] == '[':
+                
+                # Method calls need to be handles separately and will look different
+                # in the case of a method call, the function will also accept
+                # a reference to the calling object, as argument 0
+                binding = self.env.lookup(current[1])
+                if(binding == None):
+                    ans = args
+                    ans += "  call {}.{} {}\n".format(current[1], method_name, n_args)
+                else:
+                    ans = self.pushVM(current)
+                    ans += args
+                    ans += "  call {}.{} {}\n".format(binding.typ, method_name, n_args + 1) #different for method calls
+                
+                    
+                return ans
+            
+            elif self.get_token()[1] == '[': # array evaluation
                 ans = self.pushVM(current)
                 self.cursor += 1
                 ans += self.compileExpr()
@@ -385,6 +423,7 @@ class Compiler():
                 ans += "  pop pointer 1\n"
                 ans += "  push that 0\n"
                 return ans
+            
             else: #variable
                 return self.pushVM(current)
         
@@ -419,6 +458,8 @@ class Compiler():
         else:
             if typ == 'integerConstant':
                 arg1, arg2 = 'constant', name
+            elif typ == 'keyword' and name == 'this':
+                arg1, arg2 = 'pointer', 0
             elif typ == 'keyword' and name in keyWordConsts.keys():
                 arg1, arg2 = 'constant', keyWordConsts[name]
             else:
@@ -450,28 +491,35 @@ class Compiler():
 def unit_test(test_num):
     i = test_num
     comp = Compiler()
-    f = open("testing/ex{}.txt".format(i))
+    f = open("testing/ex{}.jack".format(i))
     jack_program = f.read()
-    f_ok = open("testing/ex{}_ok.txt".format(i))
+    f_ok = open("testing/ex{}_ok.vm".format(i))
     vm_program = f_ok.read()
     compiled_program = comp.compileClass(tokenizer(jack_program))
+    
     try:
         assert(compiled_program == vm_program)
     except:
-        print("Possible compilation failure in the first code:")
+        print("Possible compilation failure:")
         print(compiled_program)
-        print("Reference version:")
+        print("Reference version for test {}:".format(test_num))
         print(vm_program)
-        
-for i in {1,2,5,6}:
+
+
+def main():
+    f_name = "testing/ex1.jack".format(3)
+    comp = Compiler()
+    print(comp.env)
+    f = open(f_name)
+    jack_program = f.read()
+    compiled_program = comp.compileClass(tokenizer(jack_program))
+    print(compiled_program)
+
+for i in {1, 2, 3, 5, 6, 7}:
     unit_test(i)
 
+#main()
 
-test_num = 1
-comp = Compiler()
-f = open("testing/ex{}.txt".format(test_num))
-jack_program = f.read()
-compiled_program = comp.compileClass(tokenizer(jack_program))
 
 
     

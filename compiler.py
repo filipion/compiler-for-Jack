@@ -184,6 +184,7 @@ class Compiler():
             
     
     def compileClassVarDec(self):
+        
         if(self.get_token()[1] == 'field'):
             self.cls_size += 1
             
@@ -244,7 +245,7 @@ class Compiler():
         self.cursor += 1
         while(self.get_token() == ['keyword', 'var']):
             self.compileVarDec()
-            
+        
         body = self.compileStatements()
         self.cursor += 1
         return body
@@ -261,6 +262,10 @@ class Compiler():
         while(self.get_token()[1] in {'let', 'do', 'while', 'if', 'return'}):
             first_statement = self.compileStatement()
             ans += first_statement
+        try:
+            assert(self.get_token()[1] == '}')
+        except:
+            print("CompileStatements crashed")
         return ans
         
     
@@ -422,6 +427,7 @@ class Compiler():
                 ans += "  add\n"
                 ans += "  pop pointer 1\n"
                 ans += "  push that 0\n"
+                self.cursor += 1
                 return ans
             
             else: #variable
@@ -484,11 +490,12 @@ class Compiler():
     
     def debug(self, message = ""):
         print(message)
-        view = self.tokens[self.cursor: self.cursor + 3]
+        view = self.tokens[self.cursor - 3: self.cursor + 3]
         print(view)
 
 
 def unit_test(test_num):
+    print("Running test:", test_num)
     i = test_num
     comp = Compiler()
     f = open("testing/ex{}.jack".format(i))
@@ -504,21 +511,31 @@ def unit_test(test_num):
         print(compiled_program)
         print("Reference version for test {}:".format(test_num))
         print(vm_program)
+        
 
 
 def main():
-    f_name = "testing/ex1.jack".format(3)
+    f_name = "testing/input.jack"
+    outfile = "testing/output.vm"
     comp = Compiler()
-    print(comp.env)
+    print("Compiling input.jack:\n")
     f = open(f_name)
+    g = open(outfile, "w")
     jack_program = f.read()
-    compiled_program = comp.compileClass(tokenizer(jack_program))
+    compiled_program = comp.compileClass(tokenizer(uncomment(jack_program)))
+    g.write(compiled_program)
     print(compiled_program)
 
 for i in {1, 2, 3, 5, 6, 7}:
     unit_test(i)
 
-#main()
+main()
+
+tc = Compiler()
+tc.env.add("a", "int", "var")
+tc.env.add("sum", "int", "var")
+tc.env.add("i", "int", "var")
+tc.tokens = tokenizer("sum + a[i];)")
 
 
 

@@ -35,7 +35,7 @@ def word_split(s):
             in_string = False
             current += c
             words.append(current)
-            current = ""     
+            current = "" 
         elif c in " \n\t" and not in_string:
             if current != "":
                 words.append(current)
@@ -177,7 +177,7 @@ class Compiler():
         
         while(self.get_token()[1] in ['static', 'field']):
             self.compileClassVarDec()
-            
+        
         while(self.get_token() != ['symbol', '}']):
             code += self.compileSubDec()
             
@@ -185,12 +185,10 @@ class Compiler():
             
     
     def compileClassVarDec(self):
-        
         if(self.get_token()[1] == 'field'):
             self.cls_size += 1
             
-        self.env.add(self.tokens[2 + self.cursor][1], self.tokens[1 + self.cursor][1], self.tokens[self.cursor][1])
-        self.cursor += 4
+        self.compileVarDec()
     
     
     def compileSubDec(self):
@@ -218,13 +216,13 @@ class Compiler():
         ans = ""
         ans += "function {}.{} {}\n".format(self.cls_name, fn_name, num_var)
         if(fn_kind == 'constructor'): # constructors call a special Memory.alloc function under the hood
-            body = "  push constant {}\n".format(self.cls_size) \
-                 + "  call Memory.alloc 1\n" \
-                 + "  pop pointer 0\n" \
+            body = "push constant {}\n".format(self.cls_size) \
+                 + "call Memory.alloc 1\n" \
+                 + "pop pointer 0\n" \
                  + body
         elif(fn_kind == 'method'):
-            body = "  push argument 0\n"\
-                 + "  pop pointer 0\n"\
+            body = "push argument 0\n"\
+                 + "pop pointer 0\n"\
                  + body
         ans += body
         return  ans
@@ -255,7 +253,13 @@ class Compiler():
     def compileVarDec(self):
         ptr = self.cursor
         self.env.add(self.tokens[2 + ptr][1], self.tokens[1 + ptr][1], self.tokens[ptr][1])
-        self.cursor += 4
+        self.cursor += 3
+        while(self.get_token() == ['symbol', ',']):
+            self.cursor += 1
+            self.env.add(self.get_token()[1], self.tokens[1 + ptr][1], self.tokens[ptr][1])
+            self.cursor += 1
+        
+        self.cursor += 1
             
 
     def compileStatements(self):
@@ -276,13 +280,13 @@ class Compiler():
         
         if current[1] == 'return':
             if self.get_token()[1] == ';':
-                returned = "  push constant 0\n"
+                returned = "push constant 0\n"
                 self.cursor += 1
-                return returned + "  return\n"
+                return returned + "return\n"
             else:
                 returned = self.compileExpr()
                 self.cursor += 1 # skip ';'
-                return returned + "  return\n"
+                return returned + "return\n"
                   
         elif current[1] == 'let':
             to_variable = self.get_token()
@@ -300,9 +304,9 @@ class Compiler():
                 self.cursor += 1
                 exp = self.compileExpr()
                 self.cursor += 1
-                ans = base + idx + "  add\n  pop temp 0\n"
+                ans = base + idx + "add\npop temp 0\n"
                 ans += exp
-                ans += "  push temp 0\n  pop pointer 1\n  pop that 0\n"
+                ans += "push temp 0\npop pointer 1\npop that 0\n"
                 return ans
             else:
                 raise ValueError("Illegal let expression")
@@ -314,13 +318,13 @@ class Compiler():
             body = self.compileStatements()
             self.cursor += 1 # skip '}'
             
-            lines = "  label LOOP_{}\n".format(self.label_id)
+            lines = "label LOOP_{}\n".format(self.label_id)
             lines += condition
-            lines += "  not\n"
-            lines += "  if-goto END_LOOP_{}\n".format(self.label_id)
+            lines += "not\n"
+            lines += "if-goto END_LOOP_{}\n".format(self.label_id)
             lines += body
-            lines += "  goto LOOP_{}\n".format(self.label_id)
-            lines += "  label END_LOOP_{}\n".format(self.label_id)
+            lines += "goto LOOP_{}\n".format(self.label_id)
+            lines += "label END_LOOP_{}\n".format(self.label_id)
             
             self.label_id += 1
             return lines
@@ -341,13 +345,13 @@ class Compiler():
     
             lines = ""
             lines += condition
-            lines += "  not\n"
-            lines += "  if-goto ELSE_{}\n".format(self.label_id)
+            lines += "not\n"
+            lines += "if-goto ELSE_{}\n".format(self.label_id)
             lines += branch_1_code
-            lines += "  goto ENDIF_{}\n".format(self.label_id)
-            lines += "  label ELSE_{}\n".format(self.label_id)
+            lines += "goto ENDIF_{}\n".format(self.label_id)
+            lines += "label ELSE_{}\n".format(self.label_id)
             lines += branch_2_code
-            lines += "  label ENDIF_{}\n".format(self.label_id)
+            lines += "label ENDIF_{}\n".format(self.label_id)
             
             self.label_id += 1
             return lines
@@ -355,7 +359,7 @@ class Compiler():
         elif current[1] == 'do':
             ans = self.compileTerm()
             self.cursor += 1
-            ans += "  pop temp 0\n"
+            ans += "pop temp 0\n"
             return ans
                  
         else:
@@ -369,7 +373,7 @@ class Compiler():
         if next_t[1] in OPS:
             self.cursor += 1
             rest_of_expr = self.compileExpr()
-            return first_term + rest_of_expr + "  " + opToVM[next_t[1]] + "\n"
+            return first_term + rest_of_expr + opToVM[next_t[1]] + "\n"
         else:
             return first_term
     
@@ -397,7 +401,7 @@ class Compiler():
                 self.cursor += 1
                 args, n_args = self.compileExprList()
                 self.cursor += 1
-                return args + "  call {}.{} {}\n".format(self.cls_name, current[1], n_args)
+                return args + "call {}.{} {}\n".format(self.cls_name, current[1], n_args)
             
             elif self.get_token()[1] == '.': # method-like call
                 self.cursor += 1
@@ -412,11 +416,11 @@ class Compiler():
                 binding = self.env.lookup(current[1])
                 if(binding == None):
                     ans = args
-                    ans += "  call {}.{} {}\n".format(current[1], method_name, n_args)
+                    ans += "call {}.{} {}\n".format(current[1], method_name, n_args)
                 else:
                     ans = self.pushVM(current)
                     ans += args
-                    ans += "  call {}.{} {}\n".format(binding.typ, method_name, n_args + 1) #different for method calls
+                    ans += "call {}.{} {}\n".format(binding.typ, method_name, n_args + 1) #different for method calls
                 
                     
                 return ans
@@ -425,9 +429,9 @@ class Compiler():
                 ans = self.pushVM(current)
                 self.cursor += 1
                 ans += self.compileExpr()
-                ans += "  add\n"
-                ans += "  pop pointer 1\n"
-                ans += "  push that 0\n"
+                ans += "add\n"
+                ans += "pop pointer 1\n"
+                ans += "push that 0\n"
                 self.cursor += 1
                 return ans
             
@@ -442,7 +446,7 @@ class Compiler():
         
         # '-' expr case
         elif current[1] in "-~":
-            return self.compileTerm() + "  neg\n"
+            return self.compileTerm() + "not\n"
         
         # constant case
         elif current[0] in {'integerConstant', 'stringConstant'} or \
@@ -471,16 +475,16 @@ class Compiler():
                 arg1, arg2 = 'constant', keyWordConsts[name]
             elif typ == 'stringConstant':
                 real_name = name[1:-1]
-                lines  = "  push constant {}\n".format(len(real_name))
-                lines += "  call String.new 1\n"
+                lines  = "push constant {}\n".format(len(real_name))
+                lines += "call String.new 1\n"
                 for c in real_name:
-                    lines += "  push constant {}\n".format(ord(c))
-                    lines += "  call String.appendChar 2\n"
+                    lines += "push constant {}\n".format(ord(c))
+                    lines += "call String.appendChar 2\n"
                 return lines
             else:
                 raise ValueError("{} literal is not defined".format(token))
 
-        line = "  push {} {}\n".format(arg1, arg2)
+        line = "push {} {}\n".format(arg1, arg2)
         
         return line
     
@@ -493,7 +497,7 @@ class Compiler():
             arg1, arg2 = kindToSegment[data.kind], data.idx
         else:
             raise ValueError("{} not defined in the Jack environment".format(name))
-        line = "  pop {} {}\n".format(arg1, arg2)
+        line = "pop {} {}\n".format(arg1, arg2)
         return line
         
     
@@ -524,34 +528,28 @@ def unit_test(test_num):
 
 
 def main():
-    f_name = "testing/ex8.jack"
-    outfile = "testing/output.vm"
+    f_name = "testing/Main.jack"
+    outfile = "testing/Main.vm"
     comp = Compiler()
     print("Compiling input.jack:\n")
     f = open(f_name)
     g = open(outfile, "w")
     jack_program = f.read()
+    jack_program += "EOF"
+    print(jack_program[:300])
     compiled_program = comp.compileClass(tokenizer(uncomment(jack_program)))
     g.write(compiled_program)
-    print(compiled_program)
 
 for i in range(1, 8):
     unit_test(i)
 
-#main()
-
+main()
+test_str = """
+method void moveBall() {}"""
 tc = Compiler()
-tc.env.add("a", "int", "var")
-tc.env.add("sum", "int", "var")
-tc.env.add("i", "int", "var")
-tc.tokens = tokenizer(uncomment("""
-class ex8 {
-    function string HELLO(){
-        return "HELLO";
-    }
-}                    
-                      
-"""))
+tc.tokens = tokenizer((test_str))
+a = tc.tokens
+
 
 
 

@@ -175,8 +175,9 @@ class Compiler():
         self.cursor += 3
         code = ""
         
-        while(self.get_token() in [['keyword', 'static'], ['keyword', 'field']]):
+        while(self.get_token()[1] in ['static', 'field']):
             self.compileClassVarDec()
+            
         while(self.get_token() != ['symbol', '}']):
             code += self.compileSubDec()
             
@@ -468,8 +469,16 @@ class Compiler():
                 arg1, arg2 = 'pointer', 0
             elif typ == 'keyword' and name in keyWordConsts.keys():
                 arg1, arg2 = 'constant', keyWordConsts[name]
+            elif typ == 'stringConstant':
+                real_name = name[1:-1]
+                lines  = "  push constant {}\n".format(len(real_name))
+                lines += "  call String.new 1\n"
+                for c in real_name:
+                    lines += "  push constant {}\n".format(ord(c))
+                    lines += "  call String.appendChar 2\n"
+                return lines
             else:
-                raise ValueError("{} not defined".format(name))
+                raise ValueError("{} literal is not defined".format(token))
 
         line = "  push {} {}\n".format(arg1, arg2)
         
@@ -515,7 +524,7 @@ def unit_test(test_num):
 
 
 def main():
-    f_name = "testing/input.jack"
+    f_name = "testing/ex8.jack"
     outfile = "testing/output.vm"
     comp = Compiler()
     print("Compiling input.jack:\n")
@@ -526,16 +535,23 @@ def main():
     g.write(compiled_program)
     print(compiled_program)
 
-for i in {1, 2, 3, 5, 6, 7}:
+for i in range(1, 8):
     unit_test(i)
 
-main()
+#main()
 
 tc = Compiler()
 tc.env.add("a", "int", "var")
 tc.env.add("sum", "int", "var")
 tc.env.add("i", "int", "var")
-tc.tokens = tokenizer("sum + a[i];)")
+tc.tokens = tokenizer(uncomment("""
+class ex8 {
+    function string HELLO(){
+        return "HELLO";
+    }
+}                    
+                      
+"""))
 
 
 

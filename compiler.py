@@ -72,7 +72,6 @@ def tokenizer(s):
 
 
 # takes in a Jack program and returns the same program with comments removed
-# TODO make 'comment' an enum?
 def uncomment(s):
     ans = ""
     comment = 0
@@ -151,20 +150,18 @@ class Environment():
 
 ### 3 Compiler
 # class to compile the Jack language
-# I want to completely refactor this to make it single pass (using indirect recursion)
 class Compiler():
     
     env = Environment()
-    code = ""
-    curr_code = ""
     cls_name = "_"
     cursor = 0  #a cursor to where the next code block to be compiled starts, most methods will advance this cursor as they compile the code
     tokens = [] #tokens to compile
     label_id = 0
     
 
+    # used by almost every function in the compiler to read the current token
     def get_token(self):
-        return self.tokens[self.cursor]
+        return self.tokens[self.cursor].copy()
     
 
     def compileClass(self, input_tokens):
@@ -186,38 +183,34 @@ class Compiler():
         self.cursor += 4
     
     
-    #done
     def compileSubDec(self):
-        self.env.push()
+        self.env.push() # we require a new stack frame for local names
         if self.tokens[self.cursor] == ['keyword', 'method']:
             self.env.add("this", self.cls_name, "argument")
         
+        # function header
         self.cursor += 1 #skip (method|function|constructor)
         self.cursor += 1 #skip return type
         fn_name = self.get_token()[1]
         self.cursor += 1 #skip fn name
         self.cursor += 1 #skip '('
-        
         self.compileParamList()
         self.cursor += 1 # ')'
         
-        
+        # function body
         body = self.compileSubBody()
         num_var = self.env.get_local_count()
         self.env.pop()
         
-        
-        ans = ""
-        ans += "function {}.{} {}\n".format(self.cls_name, fn_name, num_var)
+        # VM code
+        ans = "function {}.{} {}\n".format(self.cls_name, fn_name, num_var)
         ans += body
         return  ans
     
     
-    #done
     def compileParamList(self):
         if(self.get_token() == ['symbol', ')']): # no args case
             return
-        
         
         while(self.tokens[self.cursor + 2] == ['symbol', ',']):
             self.env.add(self.tokens[self.cursor + 1][1], self.tokens[self.cursor + 0][1], "argument")
@@ -227,7 +220,6 @@ class Compiler():
         self.cursor += 2
             
     
-    #done
     def compileSubBody(self):
         self.cursor += 1
         while(self.get_token() == ['keyword', 'var']):
@@ -238,23 +230,20 @@ class Compiler():
         return body
     
     
-    #done
     def compileVarDec(self):
         ptr = self.cursor
         self.env.add(self.tokens[2 + ptr][1], self.tokens[1 + ptr][1], self.tokens[ptr][1])
         self.cursor += 4
             
-    #done
+
     def compileStatements(self):
         ans = ""
         while(self.get_token()[1] in {'let', 'do', 'while', 'if', 'return'}):
             first_statement = self.compileStatement()
             ans += first_statement
-        
         return ans
         
     
-    # parse a single statement
     def compileStatement(self):
         current = self.tokens[self.cursor]
         self.cursor += 1
@@ -272,12 +261,12 @@ class Compiler():
             to_variable = self.get_token()
             base = self.pushVM(to_variable)
             self.cursor += 1
-            if self.get_token() == ['symbol', '=']:
+            if self.get_token() == ['symbol', '=']: # assignment to normal variable
                 self.cursor += 1
                 exp = self.compileExpr()
                 self.cursor += 1
                 return exp + self.popVM(to_variable[1])
-            elif self.get_token() == ['symbol', '[']:
+            elif self.get_token() == ['symbol', '[']: # assignment to array
                 self.cursor += 1
                 idx = self.compileExpr()
                 self.cursor += 1
@@ -313,22 +302,24 @@ class Compiler():
             self.cursor += 1 # skip '('
             condition = self.compileExpr()
             self.cursor += 2 # skip ')' '{'
-            branch_1 = self.compileStatements()
+            branch_1_code = self.compileStatements()
             self.cursor += 1 # skip '}'
             
-            branch_2 = ""
             if(self.get_token()[1] == 'else'):
                 self.cursor += 2 # skip else {
-                branch_2 = self.compileStatements()
+                branch_2_code = self.compileStatements()
                 self.cursor += 1
+            else:
+                branch_2_code = ""
+    
             lines = ""
             lines += condition
             lines += "  not\n"
             lines += "  if-goto ELSE_{}\n".format(self.label_id)
-            lines += branch_1
+            lines += branch_1_code
             lines += "  goto ENDIF_{}\n".format(self.label_id)
             lines += "  label ELSE_{}\n".format(self.label_id)
-            lines += branch_2
+            lines += branch_2_code
             lines += "  label ENDIF_{}\n".format(self.label_id)
             
             self.label_id += 1
@@ -340,7 +331,7 @@ class Compiler():
             return ans
                  
         else:
-            raise ValueError("invalid statement " + self.tokens[self.cursor])
+            raise ValueError("Illegal statement " + self.tokens[self.cursor])
             
     
     def compileExpr(self):
@@ -360,15 +351,14 @@ class Compiler():
             return "", 0
         
         first_expr = self.compileExpr()
-        if self.get_token()[1] == ",":
+        if self.get_token()[1] == ",": # 2 or more args
             self.cursor += 1
             other_args, n_args = self.compileExprList()
             return first_expr + other_args, 1 + n_args
-        else:
+        else: # 1 arg
             return first_expr, 1
     
     
-    # takes an input starting with a term and delimits that term
     def compileTerm(self):
         current = self.tokens[self.cursor]
         self.cursor += 1

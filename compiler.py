@@ -4,6 +4,7 @@ Created on Sun Mar  6 14:27:43 2022
 
 @author: filip
 """
+import os
 
 keyWords = {'class', 'method', 'function', 'constructor', 'int', 'boolean', 'char',
             'void', 'var', 'static', 'field', 'let', 'do', 'if', 'else', 'while',
@@ -185,10 +186,11 @@ class Compiler():
             
     
     def compileClassVarDec(self):
+        is_field = False
         if(self.get_token()[1] == 'field'):
-            self.cls_size += 1
+            is_field = True
             
-        self.compileVarDec()
+        self.compileVarDec(is_field)
     
     
     def compileSubDec(self):
@@ -250,11 +252,15 @@ class Compiler():
         return body
     
     
-    def compileVarDec(self):
+    def compileVarDec(self, is_field=False):
         ptr = self.cursor
         self.env.add(self.tokens[2 + ptr][1], self.tokens[1 + ptr][1], self.tokens[ptr][1])
         self.cursor += 3
+        if(is_field):
+            self.cls_size += 1
         while(self.get_token() == ['symbol', ',']):
+            if(is_field):
+                self.cls_size += 1
             self.cursor += 1
             self.env.add(self.get_token()[1], self.tokens[1 + ptr][1], self.tokens[ptr][1])
             self.cursor += 1
@@ -401,7 +407,7 @@ class Compiler():
                 self.cursor += 1
                 args, n_args = self.compileExprList()
                 self.cursor += 1
-                return args + "call {}.{} {}\n".format(self.cls_name, current[1], n_args)
+                return "push pointer 0\n" + args + "call {}.{} {}\n".format(self.cls_name, current[1], n_args + 1)
             
             elif self.get_token()[1] == '.': # method-like call
                 self.cursor += 1
@@ -486,6 +492,9 @@ class Compiler():
 
         line = "push {} {}\n".format(arg1, arg2)
         
+        if(token == ['keyword', 'true']):
+            line = "push constant 0\nnot\n"
+        
         return line
     
     
@@ -505,6 +514,11 @@ class Compiler():
         print(message)
         view = self.tokens[self.cursor - 3: self.cursor + 3]
         print(view)
+        
+
+def compileFromString(s):
+    comp = Compiler()
+    return comp.compileClass(tokenizer(uncomment(s + '\n')))
 
 
 def unit_test(test_num):
@@ -520,35 +534,32 @@ def unit_test(test_num):
     try:
         assert(compiled_program == vm_program)
     except:
-        print("Possible compilation failure:")
+        print("Possible compilation failure in test {}:".format(test_num))
         print(compiled_program)
         print("Reference version for test {}:".format(test_num))
         print(vm_program)
-        
-
-
-def main():
-    f_name = "testing/Main.jack"
-    outfile = "testing/Main.vm"
-    comp = Compiler()
-    print("Compiling input.jack:\n")
-    f = open(f_name)
-    g = open(outfile, "w")
-    jack_program = f.read()
-    jack_program += "EOF"
-    print(jack_program[:300])
-    compiled_program = comp.compileClass(tokenizer(uncomment(jack_program)))
-    g.write(compiled_program)
 
 for i in range(1, 8):
     unit_test(i)
+    
+rootdir = "./testing/src/"
 
-main()
-test_str = """
-method void moveBall() {}"""
-tc = Compiler()
-tc.tokens = tokenizer((test_str))
-a = tc.tokens
+
+def JackToVM(rootdir):
+    for _, _, files in os.walk(rootdir):
+        for file in files:
+            if file[-5:] == '.jack':
+                print("Compiling file", file)
+                out_file = file[:-5] + '.vm'
+                fin = open(rootdir + file)
+                fout = open(rootdir + out_file, 'w')
+                data = fin.read()
+                vm = compileFromString(data)
+                fout.write(vm)
+            
+
+
+
 
 
 

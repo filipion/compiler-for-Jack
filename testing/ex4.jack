@@ -1,0 +1,5 @@
+class ex8 {
+    function string HELLO(){
+        return "HELLO";
+    }
+}

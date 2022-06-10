@@ -1,0 +1,14 @@
+class program2{
+    field int a;
+    static string b;
+    static string dragon;
+    
+    constructor void program(){
+	return this;
+    }
+
+    method int foo(char a, int b, float c){
+        var int counter;
+	let counter = b; 
+    }  
+}

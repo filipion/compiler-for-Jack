@@ -1,0 +1,15 @@
+function Main.main 3
+push pointer 0
+push local 0
+push local 1
+push constant 3
+push constant 4
+call Main.f 5
+pop local 0
+push local 2
+push local 1
+call ThingWithMethods.f 2
+push local 0
+not
+add
+pop local 0

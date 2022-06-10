@@ -1,0 +1,29 @@
+class Object{
+    field int weight;
+    static string dragon;
+    
+    constructor Object new(int initial_w){
+        let dragon = initial_w;
+        let weight = dragon;
+	return this; 
+    }
+
+    method void embiggen(int b){
+        var int to_add;
+	let to_add = b;
+	let weight = weight + to_add;  
+	return;
+    }
+
+    method int get_weight(){
+        return weight;
+    }
+
+    method bool compare(int a, int b){
+	var Object obj1;
+	let obj1 = Object.new(a);
+	do obj1.embiggen(3);
+	return true;
+    }
+ 
+}

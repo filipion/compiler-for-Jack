@@ -1,0 +1,19 @@
+class program{
+    method void do_stuff (int lmao){
+        var int counter;
+        var int a, b, q;
+        var bool expr;
+        
+        while (a > 0){
+            let b = b + 1;
+            let q = 44 - 2;
+            do a();
+        }
+        
+        if (expr) 
+            {do nothing();}
+        else
+            {do something(a, b);}
+
+    }
+}

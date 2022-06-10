@@ -1,0 +1,39 @@
+function Object.new 0
+push constant 1
+call Memory.alloc 1
+pop pointer 0
+push argument 0
+pop static 0
+push static 0
+pop this 0
+push pointer 0
+return
+function Object.embiggen 1
+push argument 0
+pop pointer 0
+push argument 1
+pop local 0
+push this 0
+push local 0
+add
+pop this 0
+push constant 0
+return
+function Object.get_weight 0
+push argument 0
+pop pointer 0
+push this 0
+return
+function Object.compare 1
+push argument 0
+pop pointer 0
+push argument 1
+call Object.new 1
+pop local 0
+push local 0
+push constant 3
+call Object.embiggen 2
+pop temp 0
+push constant 0
+not
+return

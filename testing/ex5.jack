@@ -1,0 +1,9 @@
+class Main{
+    function int main(int is_epic){
+        var int a;
+        var int b;
+	var ThingWithMethods ddd; 
+        let a = f(a, b, 3, 4);
+        let a = ddd.f(b) + (- a);
+    }
+}

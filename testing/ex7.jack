@@ -1,0 +1,9 @@
+class ex7 {
+
+   method void main(int x) {
+      var graph Instance; 
+      do Instance.printInt(1 + (2 * 3));
+      return;
+   }
+
+}

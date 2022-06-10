@@ -1,0 +1,36 @@
+function program.do_stuff 5
+push argument 0
+pop pointer 0
+label LOOP_0
+push local 1
+push constant 0
+gt
+not
+if-goto END_LOOP_0
+push local 2
+push constant 1
+add
+pop local 2
+push constant 44
+push constant 2
+sub
+pop local 3
+push pointer 0
+call program.a 1
+pop temp 0
+goto LOOP_0
+label END_LOOP_0
+push local 4
+not
+if-goto ELSE_1
+push pointer 0
+call program.nothing 1
+pop temp 0
+goto ENDIF_1
+label ELSE_1
+push pointer 0
+push local 1
+push local 2
+call program.something 3
+pop temp 0
+label ENDIF_1

@@ -1,0 +1,13 @@
+function ex7.main 1
+push argument 0
+pop pointer 0
+push local 0
+push constant 1
+push constant 2
+push constant 3
+call Math.multiply 2
+add
+call graph.printInt 2
+pop temp 0
+push constant 0
+return

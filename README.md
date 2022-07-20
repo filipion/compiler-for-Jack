@@ -10,12 +10,12 @@ Example, the Jack program:
         static string dragon;
 
         constructor void program(){
-      return this;
+            return this;
         }
 
         method int foo(char a, int b, float c){
             var int counter;
-      let counter = b; 
+            let counter = b; 
         }  
     }
 

@@ -1,4 +1,4 @@
-# Compiler-for-Jack
+# Writing a Jack Compiler
 Python implementation of a compiler for the Jack programming language from Nand2Tetris. Jack is a Java-like language designed to teach compiler concepts, which we compile to a lower-level 
 bytecode VM (virtual machine) language. The specifications for Jack and the VM language were designed by Noam Nisan and Simon Schocken as part of [The Elements of Computing Systems](https://www.amazon.com/Elements-Computing-Systems-Building-Principles/dp/0262640686/ref=ed_oe_p)
 # Example Jack program and its compiled version
